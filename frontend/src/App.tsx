@@ -1,59 +1,137 @@
-import { useState } from 'react'
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ReactKeycloakProvider, useKeycloak } from '@react-keycloak/web';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import Keycloak from 'keycloak-js';
+import { Dashboard } from '@/components/dashboard/dashboard';
+import { Login } from '@/components/auth/login';
+import { MessageTemplates } from '@/components/messaging/message-templates';
+import { UserManagement } from '@/components/admin/user-management';
+import { MessagingProgress } from '@/components/messaging/messaging-progress';
+import { Toaster } from '@/components/ui/toaster';
+import { api } from '@/lib/api';
+import type { AuthConfig } from '@/types';
+import { Loader2 } from 'lucide-react';
+
+// Create a query client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function App() {
-  const [count, setCount] = useState(0)
-  const [message, setMessage] = useState<string>('')
+  const [keycloak, setKeycloak] = useState<Keycloak | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchData = () => {
-    fetch(`http://localhost:${import.meta.env.VITE_PORT}/`)
-      .then(response => response.text())
-      .then(data => setMessage(data))
-      .catch(error => console.error('Error fetching data:', error))
+  useEffect(() => {
+    // Fetch Keycloak configuration from backend
+    api.auth.config()
+      .then(response => {
+        const config: AuthConfig = response.data;
+        
+        const keycloakInstance = new Keycloak({
+          url: config.auth_url,
+          realm: config.realm,
+          clientId: config.client_id,
+        });
+        
+        setKeycloak(keycloakInstance);
+      })
+      .catch(error => {
+        console.error('Failed to fetch auth config:', error);
+        setError('Failed to load authentication configuration');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Loading application...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+            <h2 className="text-lg font-semibold text-red-800 mb-2">Configuration Error</h2>
+            <p className="text-red-600">{error}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!keycloak) {
+    return null;
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md mx-auto space-y-8">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Welcome to Vite + React
-          </h1>
-          <p className="text-gray-600">
-            Get started by editing <code className="text-sm bg-gray-100 p-1 rounded">src/App.tsx</code>
-          </p>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <div className="text-center space-y-4">
-            <button
-              onClick={() => setCount((count) => count + 1)}
-              className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-md transition-colors"
-            >
-              Count is {count}
-            </button>
-            
-            <button
-              onClick={fetchData}
-              className="block w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-md transition-colors"
-            >
-              Fetch from Server
-            </button>
-
-            {message && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-md">
-                <p className="text-gray-700">Server Response:</p>
-                <p className="text-gray-900 font-medium">{message}</p>
-              </div>
-            )}
+    <ReactKeycloakProvider
+      authClient={keycloak}
+      initOptions={{
+        onLoad: 'check-sso',
+        checkLoginIframe: false,
+      }}
+      LoadingComponent={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+            <p className="text-gray-600">Authenticating...</p>
           </div>
         </div>
-
-        <div className="text-center text-gray-500 text-sm">
-          Built with Vite, React, and Tailwind CSS
-        </div>
-      </div>
-    </div>
-  )
+      }
+    >
+      <QueryClientProvider client={queryClient}>
+        <Router>
+          <AppRoutes />
+        </Router>
+        <Toaster />
+      </QueryClientProvider>
+    </ReactKeycloakProvider>
+  );
 }
 
-export default App
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/templates" element={<ProtectedRoute><MessageTemplates /></ProtectedRoute>} />
+      <Route path="/admin/users" element={<ProtectedRoute><UserManagement /></ProtectedRoute>} />
+      <Route path="/messaging/progress" element={<ProtectedRoute><MessagingProgress /></ProtectedRoute>} />
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
+  );
+}
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { keycloak } = useKeycloak();
+
+  if (!keycloak?.authenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+export default App;

@@ -34,26 +34,62 @@ services:
     networks:
       - blueprint
   psql_bp:
-    image: postgres:latest
+    image: postgres:15-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${BLUEPRINT_DB_DATABASE}
       POSTGRES_USER: ${BLUEPRINT_DB_USERNAME}
       POSTGRES_PASSWORD: ${BLUEPRINT_DB_PASSWORD}
+      # Allow Keycloak to create its own database
+      POSTGRES_MULTIPLE_DATABASES: ${KEYCLOAK_DB_DATABASE}
     ports:
       - "${BLUEPRINT_DB_PORT}:5432"
     volumes:
       - psql_volume_bp:/var/lib/postgresql/data
+      - ./docker/postgresql/init-keycloak-db.sh:/docker-entrypoint-initdb.d/init-keycloak-db.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "sh -c 'pg_isready -U ${BLUEPRINT_DB_USERNAME} -d ${BLUEPRINT_DB_DATABASE}'"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 30s
+    networks:
+      - blueprint
+  
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    restart: unless-stopped
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://${KEYCLOAK_DB_HOST}:${KEYCLOAK_DB_PORT}/${KEYCLOAK_DB_DATABASE}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USERNAME}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HTTP_ENABLED: true
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+    ports:
+      - "${KEYCLOAK_PORT}:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    depends_on:
+      psql_bp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    command: start-dev
     networks:
       - blueprint
 
 volumes:
   psql_volume_bp:
+  keycloak_data:
 networks:
   blueprint:

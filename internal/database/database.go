@@ -22,10 +22,14 @@ type Service interface {
 	// Close terminates the database connection.
 	// It returns an error if the connection cannot be closed.
 	Close() error
+	
+	// Repository returns the repository interface for database operations
+	Repository() Repository
 }
 
 type service struct {
-	db *sql.DB
+	db   *sql.DB
+	repo Repository
 }
 
 var (
@@ -48,9 +52,11 @@ func New() Service {
 	if err != nil {
 		log.Fatal(err)
 	}
-	dbInstance = &service{
+	svc := &service{
 		db: db,
 	}
+	svc.repo = NewRepository(svc)
+	dbInstance = svc
 	return dbInstance
 }
 
@@ -112,4 +118,9 @@ func (s *service) Health() map[string]string {
 func (s *service) Close() error {
 	log.Printf("Disconnected from database: %s", database)
 	return s.db.Close()
+}
+
+// Repository returns the repository interface for database operations
+func (s *service) Repository() Repository {
+	return s.repo
 }
