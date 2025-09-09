@@ -1,4 +1,5 @@
-FROM golang:1.25.1-alpine AS build
+# Change it to a newer version like this
+FROM golang:1.25-alpine AS build
 
 WORKDIR /app
 

@@ -21,6 +21,7 @@ services:
         condition: service_healthy
     networks:
       - blueprint
+
   frontend:
     build:
       context: .
@@ -30,9 +31,10 @@ services:
     depends_on:
       - app
     ports:
-      - 5173:5173
+      - "5173:80" # Maps to the internal port 80 of the NGINX container
     networks:
       - blueprint
+
   psql_bp:
     image: postgres:15-alpine
     restart: unless-stopped
@@ -40,15 +42,13 @@ services:
       POSTGRES_DB: ${BLUEPRINT_DB_DATABASE}
       POSTGRES_USER: ${BLUEPRINT_DB_USERNAME}
       POSTGRES_PASSWORD: ${BLUEPRINT_DB_PASSWORD}
-      # Allow Keycloak to create its own database
-      POSTGRES_MULTIPLE_DATABASES: ${KEYCLOAK_DB_DATABASE}
     ports:
       - "${BLUEPRINT_DB_PORT}:5432"
     volumes:
       - psql_volume_bp:/var/lib/postgresql/data
       - ./docker/postgresql/init-keycloak-db.sh:/docker-entrypoint-initdb.d/init-keycloak-db.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "sh -c 'pg_isready -U ${BLUEPRINT_DB_USERNAME} -d ${BLUEPRINT_DB_DATABASE}'"]
+      test: ["CMD-SHELL", "pg_isready -U ${BLUEPRINT_DB_USERNAME} -d ${BLUEPRINT_DB_DATABASE}"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -56,8 +56,9 @@ services:
     networks:
       - blueprint
   
+  # 'keycloak' is now correctly indented under 'services'
   keycloak:
-    image: quay.io/keycloak/keycloak:latest
+    image: quay.io/keycloak/keycloak:25.0.1 # Using a specific version
     restart: unless-stopped
     environment:
       KC_DB: postgres
@@ -75,6 +76,7 @@ services:
       - "${KEYCLOAK_PORT}:8080"
     volumes:
       - keycloak_data:/opt/keycloak/data
+      
     depends_on:
       psql_bp:
         condition: service_healthy
@@ -84,12 +86,19 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-    command: start-dev
+    
+    # Use 'entrypoint' to override the startup command and solve the race condition
+    entrypoint: >
+      /bin/sh -c "
+      /opt/keycloak/wait-for-postgres.sh ${KEYCLOAK_DB_HOST} ${KEYCLOAK_DB_DATABASE} ${KEYCLOAK_DB_USERNAME} &&
+      /opt/keycloak/bin/kc.sh start-dev
+      "
     networks:
       - blueprint
 
 volumes:
   psql_volume_bp:
   keycloak_data:
+
 networks:
   blueprint:
