@@ -118,8 +118,10 @@ func (s *Server) HelloWorldHandler(c echo.Context) error {
 func (s *Server) authConfigHandler(c echo.Context) error {
 	config := map[string]interface{}{
 		"realm":      s.keycloakConfig.Realm,
-		"serverUrl":  s.keycloakConfig.ServerURL,
-		"clientId":   s.keycloakConfig.ClientID,
+		"auth_url":   s.keycloakConfig.ServerURL,  // Frontend expects auth_url
+		"client_id":  s.keycloakConfig.ClientID,   // Frontend expects client_id with underscore
+		"serverUrl":  s.keycloakConfig.ServerURL,  // Keep for backward compatibility
+		"clientId":   s.keycloakConfig.ClientID,   // Keep for backward compatibility
 		"realmUrl":   s.keycloakConfig.RealmURL,
 		"tokenUrl":   s.keycloakConfig.TokenEndpoint(),
 		"userInfoUrl": s.keycloakConfig.UserInfoEndpoint(),

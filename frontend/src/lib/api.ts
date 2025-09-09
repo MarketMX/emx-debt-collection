@@ -40,7 +40,7 @@ apiClient.interceptors.response.use(
 export const api = {
   // Authentication
   auth: {
-    config: () => apiClient.get('/auth/config'),
+    config: () => axios.get('/auth/config'), // Use axios directly, not apiClient with /api/v1 base
   },
 
   // File uploads
