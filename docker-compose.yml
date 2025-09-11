@@ -1,5 +1,6 @@
 services:
   app:
+    container_name: debt-backend
     build:
       context: .
       dockerfile: Dockerfile
@@ -16,13 +17,21 @@ services:
       BLUEPRINT_DB_USERNAME: ${BLUEPRINT_DB_USERNAME}
       BLUEPRINT_DB_PASSWORD: ${BLUEPRINT_DB_PASSWORD}
       BLUEPRINT_DB_SCHEMA: ${BLUEPRINT_DB_SCHEMA}
+      KEYCLOAK_SERVER_URL: http://debt-keycloak:8080
+      KEYCLOAK_FRONTEND_URL: http://localhost:8081
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
     depends_on:
       psql_bp:
         condition: service_healthy
+      keycloak:
+        condition: service_started
     networks:
       - blueprint
 
   frontend:
+    container_name: debt-frontend
     build:
       context: .
       dockerfile: Dockerfile
@@ -36,6 +45,7 @@ services:
       - blueprint
 
   psql_bp:
+    container_name: debt-postgres
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
@@ -58,7 +68,8 @@ services:
   
   # 'keycloak' is now correctly indented under 'services'
   keycloak:
-    image: quay.io/keycloak/keycloak:25.0.1 # Using a specific version
+    container_name: debt-keycloak
+    image: quay.io/keycloak/keycloak:latest
     restart: unless-stopped
     environment:
       KC_DB: postgres
@@ -76,6 +87,7 @@ services:
       - "${KEYCLOAK_PORT}:8080"
     volumes:
       - keycloak_data:/opt/keycloak/data
+<<<<<<< HEAD
       
     depends_on:
       psql_bp:
@@ -93,12 +105,25 @@ services:
       /opt/keycloak/wait-for-postgres.sh ${KEYCLOAK_DB_HOST} ${KEYCLOAK_DB_DATABASE} ${KEYCLOAK_DB_USERNAME} &&
       /opt/keycloak/bin/kc.sh start-dev
       "
+=======
+      - keycloak_conf:/opt/keycloak/conf
+      - keycloak_cache:/opt/keycloak/data/h2
+    depends_on:
+      psql_bp:
+        condition: service_healthy
+    command: start-dev --import-realm
+>>>>>>> aeb8902fd94c4e5eb8f2a2959e9734d65de2a0fb
     networks:
       - blueprint
 
 volumes:
   psql_volume_bp:
   keycloak_data:
+<<<<<<< HEAD
 
+=======
+  keycloak_conf:
+  keycloak_cache:
+>>>>>>> aeb8902fd94c4e5eb8f2a2959e9734d65de2a0fb
 networks:
   blueprint:

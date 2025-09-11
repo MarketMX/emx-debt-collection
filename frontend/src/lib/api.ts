@@ -1,6 +1,10 @@
 import axios from 'axios';
+import type Keycloak from 'keycloak-js';
 
-const API_BASE_URL = '/api/v1';
+// Detect if running in Docker (when hostname is not localhost)
+const isDocker = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+const BACKEND_URL = isDocker ? 'http://debt-backend:8080' : 'http://localhost:8080';
+const API_BASE_URL = `${BACKEND_URL}/api`;
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -9,38 +13,54 @@ const apiClient = axios.create({
   },
 });
 
-// Add request interceptor to include auth token
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+export const setupInterceptors = (keycloak: Keycloak) => {
+  console.log('Setting up API interceptors with Keycloak:', !!keycloak);
+  
+  apiClient.interceptors.request.use(
+    (config) => {
+      console.log('API Request interceptor - Token available:', !!keycloak.token);
+      console.log('API Request interceptor - Authenticated:', !!keycloak.authenticated);
+      
+      if (keycloak.token) {
+        config.headers.Authorization = `Bearer ${keycloak.token}`;
+        console.log('Added Authorization header to request');
+      } else {
+        console.warn('No token available for API request');
+      }
+      return config;
+    },
+    (error) => {
+      console.error('API Request interceptor error:', error);
+      return Promise.reject(error);
     }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+  );
 
-// Add response interceptor for error handling
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Clear token and redirect to login
-      localStorage.removeItem('access_token');
-      window.location.href = '/login';
+  apiClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      console.error('API Response interceptor error:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+      });
+      
+      if (error.response?.status === 401) {
+        console.warn('401 Unauthorized - logging out user');
+        // Instead of redirecting, we can just log out.
+        // The ProtectedRoute component will handle the redirect to the login page.
+        keycloak.logout();
+      }
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
-  }
-);
+  );
+};
 
 // API endpoints
 export const api = {
   // Authentication
   auth: {
-    config: () => axios.get('/auth/config'), // Use axios directly, not apiClient with /api/v1 base
+    config: () => axios.get(`${BACKEND_URL}/auth/config`), // Use dynamic backend URL
   },
 
   // File uploads
@@ -60,7 +80,7 @@ export const api = {
 
   // Accounts
   accounts: {
-    getByUploadId: (uploadId: string) => apiClient.get(`/accounts?upload_id=${uploadId}`),
+    getByUploadId: (uploadId: string) => apiClient.get(`/uploads/${uploadId}/accounts`),
   },
 
   // Messaging

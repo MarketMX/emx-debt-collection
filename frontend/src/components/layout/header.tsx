@@ -1,7 +1,8 @@
 import { useKeycloak } from '@react-keycloak/web';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, Home, MessageSquare, Users } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { LogOut, User, Home, MessageSquare, Users, Activity } from 'lucide-react';
 
 export function Header() {
   const { keycloak } = useKeycloak();
@@ -21,23 +22,33 @@ export function Header() {
   ];
 
   return (
-    <header className="bg-white border-b border-gray-200 shadow-sm">
+    <header className="bg-white/80 backdrop-blur-lg border-b border-slate-200/60 shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+        <div className="flex justify-between items-center h-18 py-3">
           <div className="flex items-center space-x-8">
-            <h1 className="text-xl font-semibold text-gray-900">
-              AAMA
-            </h1>
+            {/* Logo/Brand */}
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-xl flex items-center justify-center">
+                <Activity className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-800">
+                  CollectionHub
+                </h1>
+                <p className="text-xs text-slate-500 leading-none">Medical Debt Collection</p>
+              </div>
+            </div>
             
-            <nav className="hidden md:flex space-x-6">
+            {/* Navigation */}
+            <nav className="hidden md:flex space-x-1">
               {navigationItems.map(({ path, label, icon: Icon }) => (
                 <button
                   key={path}
                   onClick={() => navigate(path)}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                     location.pathname === path
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      ? 'bg-gradient-to-r from-blue-500 to-cyan-600 text-white shadow-md'
+                      : 'text-slate-600 hover:text-slate-800 hover:bg-slate-100'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
@@ -48,15 +59,35 @@ export function Header() {
           </div>
           
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <User className="h-4 w-4" />
-              <span>{keycloak?.tokenParsed?.preferred_username || keycloak?.tokenParsed?.email}</span>
+            {/* System Status */}
+            <div className="hidden sm:flex items-center space-x-2">
+              <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full mr-2"></div>
+                System Online
+              </Badge>
+            </div>
+
+            {/* User Info */}
+            <div className="flex items-center space-x-3">
+              <div className="hidden sm:block text-right">
+                <div className="text-sm font-medium text-slate-800">
+                  {keycloak?.tokenParsed?.preferred_username || 'User'}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {keycloak?.tokenParsed?.email}
+                </div>
+              </div>
+              <div className="w-8 h-8 bg-gradient-to-br from-slate-200 to-slate-300 rounded-lg flex items-center justify-center">
+                <User className="h-4 w-4 text-slate-600" />
+              </div>
             </div>
             
+            {/* Logout Button */}
             <Button
               variant="outline"
               size="sm"
               onClick={handleLogout}
+              className="border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-800"
             >
               <LogOut className="h-4 w-4 mr-2" />
               Logout

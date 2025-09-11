@@ -79,6 +79,7 @@ type UploadSummary struct {
 	CreatedAt            time.Time `json:"created_at" db:"created_at"`
 	UserID               uuid.UUID `json:"user_id" db:"user_id"`
 	UserEmail            *string   `json:"user_email" db:"user_email"`
+	EngageMXClientID     string    `json:"engagemx_client_id" db:"engagemx_client_id"`
 	TotalAccounts        int       `json:"total_accounts" db:"total_accounts"`
 	SelectedAccounts     int       `json:"selected_accounts" db:"selected_accounts"`
 	TotalBalanceSum      *float64  `json:"total_balance_sum" db:"total_balance_sum"`

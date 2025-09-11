@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -235,22 +236,30 @@ func (jm *JWTMiddleware) getPublicKey(kid string) (*rsa.PublicKey, error) {
 	jm.keysMutex.RLock()
 	if key, exists := jm.publicKeys[kid]; exists && time.Since(jm.lastKeyFetch) < jm.keysCacheTTL {
 		jm.keysMutex.RUnlock()
+		log.Printf("[JWT] Using cached key for kid: %s", kid)
 		return key, nil
 	}
 	jm.keysMutex.RUnlock()
 
+	log.Printf("[JWT] Key not found in cache for kid: %s, fetching from Keycloak...", kid)
 	// Fetch keys from Keycloak if cache is expired or key doesn't exist
 	if err := jm.fetchPublicKeys(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch JWKS: %v", err)
 	}
 
 	// Try to get the key again after fetching
 	jm.keysMutex.RLock()
 	defer jm.keysMutex.RUnlock()
 
+	// List all available keys for debugging
+	log.Printf("[JWT] Available keys after fetch:")
+	for k := range jm.publicKeys {
+		log.Printf("[JWT]   - kid: %s", k)
+	}
+
 	key, exists := jm.publicKeys[kid]
 	if !exists {
-		return nil, fmt.Errorf("public key not found for kid: %s", kid)
+		return nil, fmt.Errorf("public key not found for kid: %s (have %d keys cached)", kid, len(jm.publicKeys))
 	}
 
 	return key, nil
@@ -260,11 +269,12 @@ func (jm *JWTMiddleware) getPublicKey(kid string) (*rsa.PublicKey, error) {
 // fetchPublicKeys fetches public keys from Keycloak's JWKS endpoint
 func (jm *JWTMiddleware) fetchPublicKeys() error {
 	jwksURL := jm.keycloakConfig.JWKSEndpoint()
+	log.Printf("[JWT] Fetching JWKS from: %s", jwksURL)
 	
 	// Fetch the JWK set from Keycloak
 	keySet, err := jwk.Fetch(context.Background(), jwksURL)
 	if err != nil {
-		return fmt.Errorf("failed to fetch JWKS: %v", err)
+		return fmt.Errorf("failed to fetch JWKS from %s: %v", jwksURL, err)
 	}
 
 	// Parse and cache the public keys
@@ -275,24 +285,45 @@ func (jm *JWTMiddleware) fetchPublicKeys() error {
 	jm.publicKeys = make(map[string]*rsa.PublicKey)
 
 	// Iterate through the key set
+	keyCount := 0
 	for it := keySet.Keys(context.Background()); it.Next(context.Background()); {
 		pair := it.Pair()
 		key := pair.Value.(jwk.Key)
+		keyCount++
+		
+		log.Printf("[JWT] Processing key %d: Type=%s, Use=%s, Kid=%s", keyCount, key.KeyType(), key.KeyUsage(), key.KeyID())
 
 		// Only process RSA keys for signature verification
 		if key.KeyType() == "RSA" {
 			keyID := key.KeyID()
 			
+			// Skip keys without a key ID
+			if keyID == "" {
+				log.Printf("[JWT] Skipping key without kid")
+				continue
+			}
+			
 			// Convert JWK to RSA public key
-			var publicKey *rsa.PublicKey
-			if err := key.Raw(&publicKey); err != nil {
+			var rawKey interface{}
+			if err := key.Raw(&rawKey); err != nil {
+				log.Printf("[JWT] Failed to extract raw key %s: %v", keyID, err)
 				continue // Skip invalid keys
 			}
 			
+			publicKey, ok := rawKey.(*rsa.PublicKey)
+			if !ok {
+				log.Printf("[JWT] Key %s is not an RSA public key", keyID)
+				continue
+			}
+			
 			jm.publicKeys[keyID] = publicKey
+			log.Printf("[JWT] Successfully cached public key with kid: %s", keyID)
+		} else {
+			log.Printf("[JWT] Skipping non-RSA key: %s", key.KeyType())
 		}
 	}
 
+	log.Printf("[JWT] Total keys cached: %d", len(jm.publicKeys))
 	jm.lastKeyFetch = time.Now()
 	return nil
 }

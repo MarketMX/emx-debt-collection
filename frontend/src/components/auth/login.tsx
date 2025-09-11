@@ -1,10 +1,28 @@
 import { useKeycloak } from '@react-keycloak/web';
+import { Navigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LogIn } from 'lucide-react';
 
 export function Login() {
-  const { keycloak } = useKeycloak();
+  const { keycloak, initialized } = useKeycloak();
+
+  if (initialized && keycloak?.authenticated) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Optional: Show a loading state while Keycloak is initializing
+  if (!initialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          {/* Using a generic loader, you can replace with Loader2 if it's globally available */}
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600">Initializing...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleLogin = () => {
     keycloak?.login();

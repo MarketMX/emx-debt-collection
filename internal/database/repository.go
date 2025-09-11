@@ -70,24 +70,25 @@ func NewRepository(s Service) Repository {
 
 func (r *repository) CreateUser(ctx context.Context, req models.CreateUserRequest) (*models.User, error) {
 	user := &models.User{
-		ID:         uuid.New(),
-		KeycloakID: req.KeycloakID,
-		Email:      req.Email,
-		FirstName:  req.FirstName,
-		LastName:   req.LastName,
-		IsActive:   true,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		ID:               uuid.New(),
+		KeycloakID:       req.KeycloakID,
+		Email:            req.Email,
+		FirstName:        req.FirstName,
+		LastName:         req.LastName,
+		IsActive:         true,
+		EngageMXClientID: req.EngageMXClientID,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
 	}
 
 	query := `
-		INSERT INTO users (id, keycloak_id, email, first_name, last_name, is_active, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO users (id, keycloak_id, email, first_name, last_name, is_active, engagemx_client_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, created_at, updated_at`
 
 	err := r.db.QueryRowContext(ctx, query,
 		user.ID, user.KeycloakID, user.Email, user.FirstName, user.LastName,
-		user.IsActive, user.CreatedAt, user.UpdatedAt,
+		user.IsActive, user.EngageMXClientID, user.CreatedAt, user.UpdatedAt,
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 
 	if err != nil {
@@ -100,12 +101,12 @@ func (r *repository) CreateUser(ctx context.Context, req models.CreateUserReques
 func (r *repository) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, keycloak_id, email, first_name, last_name, is_active, created_at, updated_at
+		SELECT id, keycloak_id, email, first_name, last_name, is_active, engagemx_client_id, created_at, updated_at
 		FROM users WHERE id = $1`
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.KeycloakID, &user.Email, &user.FirstName, &user.LastName,
-		&user.IsActive, &user.CreatedAt, &user.UpdatedAt,
+		&user.IsActive, &user.EngageMXClientID, &user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err != nil {
@@ -121,12 +122,12 @@ func (r *repository) GetUserByID(ctx context.Context, id uuid.UUID) (*models.Use
 func (r *repository) GetUserByKeycloakID(ctx context.Context, keycloakID string) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, keycloak_id, email, first_name, last_name, is_active, created_at, updated_at
+		SELECT id, keycloak_id, email, first_name, last_name, is_active, engagemx_client_id, created_at, updated_at
 		FROM users WHERE keycloak_id = $1`
 
 	err := r.db.QueryRowContext(ctx, query, keycloakID).Scan(
 		&user.ID, &user.KeycloakID, &user.Email, &user.FirstName, &user.LastName,
-		&user.IsActive, &user.CreatedAt, &user.UpdatedAt,
+		&user.IsActive, &user.EngageMXClientID, &user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err != nil {
@@ -142,12 +143,12 @@ func (r *repository) GetUserByKeycloakID(ctx context.Context, keycloakID string)
 func (r *repository) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	user := &models.User{}
 	query := `
-		SELECT id, keycloak_id, email, first_name, last_name, is_active, created_at, updated_at
+		SELECT id, keycloak_id, email, first_name, last_name, is_active, engagemx_client_id, created_at, updated_at
 		FROM users WHERE email = $1`
 
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.KeycloakID, &user.Email, &user.FirstName, &user.LastName,
-		&user.IsActive, &user.CreatedAt, &user.UpdatedAt,
+		&user.IsActive, &user.EngageMXClientID, &user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err != nil {
@@ -189,6 +190,12 @@ func (r *repository) UpdateUser(ctx context.Context, id uuid.UUID, req models.Up
 		argIndex++
 	}
 
+	if req.EngageMXClientID != nil {
+		setParts = append(setParts, fmt.Sprintf("engagemx_client_id = $%d", argIndex))
+		args = append(args, *req.EngageMXClientID)
+		argIndex++
+	}
+
 	if len(setParts) == 0 {
 		return r.GetUserByID(ctx, id)
 	}
@@ -202,13 +209,13 @@ func (r *repository) UpdateUser(ctx context.Context, id uuid.UUID, req models.Up
 	query := fmt.Sprintf(`
 		UPDATE users SET %s
 		WHERE id = $%d
-		RETURNING id, keycloak_id, email, first_name, last_name, is_active, created_at, updated_at`,
+		RETURNING id, keycloak_id, email, first_name, last_name, is_active, engagemx_client_id, created_at, updated_at`,
 		strings.Join(setParts, ", "), argIndex)
 
 	user := &models.User{}
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(
 		&user.ID, &user.KeycloakID, &user.Email, &user.FirstName, &user.LastName,
-		&user.IsActive, &user.CreatedAt, &user.UpdatedAt,
+		&user.IsActive, &user.EngageMXClientID, &user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err != nil {
@@ -264,8 +271,9 @@ func (r *repository) CreateOrUpdateUser(ctx context.Context, keycloakID, email, 
 	
 	// User doesn't exist, create new one
 	createReq := models.CreateUserRequest{
-		KeycloakID: keycloakID,
-		Email:      email,
+		KeycloakID:       keycloakID,
+		Email:            email,
+		EngageMXClientID: "default", // Default client ID for existing users
 	}
 	
 	if firstName != "" {
@@ -289,7 +297,7 @@ func (r *repository) ListUsers(ctx context.Context, limit, offset int) ([]models
 
 	// Get users
 	query := `
-		SELECT id, keycloak_id, email, first_name, last_name, is_active, created_at, updated_at
+		SELECT id, keycloak_id, email, first_name, last_name, is_active, engagemx_client_id, created_at, updated_at
 		FROM users
 		ORDER BY created_at DESC
 		LIMIT $1 OFFSET $2`
@@ -305,7 +313,7 @@ func (r *repository) ListUsers(ctx context.Context, limit, offset int) ([]models
 		var user models.User
 		err := rows.Scan(
 			&user.ID, &user.KeycloakID, &user.Email, &user.FirstName, &user.LastName,
-			&user.IsActive, &user.CreatedAt, &user.UpdatedAt,
+			&user.IsActive, &user.EngageMXClientID, &user.CreatedAt, &user.UpdatedAt,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan user: %w", err)
@@ -511,8 +519,8 @@ func (r *repository) GetUploadSummary(ctx context.Context, id uuid.UUID) (*model
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&summary.ID, &summary.Filename, &summary.OriginalFilename, &summary.Status,
-		&summary.CreatedAt, &summary.UserID, &summary.UserEmail, &summary.TotalAccounts,
-		&summary.SelectedAccounts, &summary.TotalBalanceSum, &summary.SelectedBalanceSum,
+		&summary.CreatedAt, &summary.UserID, &summary.UserEmail, &summary.EngageMXClientID,
+		&summary.TotalAccounts, &summary.SelectedAccounts, &summary.TotalBalanceSum, &summary.SelectedBalanceSum,
 	)
 
 	if err != nil {
@@ -548,7 +556,7 @@ func (r *repository) ListUploadSummaries(ctx context.Context, userID *uuid.UUID,
 	args = append(args, limit, offset)
 	query := fmt.Sprintf(`
 		SELECT id, filename, original_filename, status, created_at, user_id, user_email,
-		       total_accounts, selected_accounts, total_balance_sum, selected_balance_sum
+		       engagemx_client_id, total_accounts, selected_accounts, total_balance_sum, selected_balance_sum
 		FROM upload_summary%s
 		ORDER BY created_at DESC
 		LIMIT $%d OFFSET $%d`, whereClause, argIndex, argIndex+1)
@@ -564,8 +572,8 @@ func (r *repository) ListUploadSummaries(ctx context.Context, userID *uuid.UUID,
 		var summary models.UploadSummary
 		err := rows.Scan(
 			&summary.ID, &summary.Filename, &summary.OriginalFilename, &summary.Status,
-			&summary.CreatedAt, &summary.UserID, &summary.UserEmail, &summary.TotalAccounts,
-			&summary.SelectedAccounts, &summary.TotalBalanceSum, &summary.SelectedBalanceSum,
+			&summary.CreatedAt, &summary.UserID, &summary.UserEmail, &summary.EngageMXClientID,
+			&summary.TotalAccounts, &summary.SelectedAccounts, &summary.TotalBalanceSum, &summary.SelectedBalanceSum,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan upload summary: %w", err)
@@ -1264,13 +1272,13 @@ func (r *repository) UpdateMessageLog(ctx context.Context, id uuid.UUID, req mod
 func (r *repository) GetMessageLogSummary(ctx context.Context, uploadID uuid.UUID) (*models.MessageLogSummary, error) {
 	summary := &models.MessageLogSummary{}
 	query := `
-		SELECT upload_id, total_messages, sent_messages, failed_messages, 
+		SELECT upload_id, engagemx_client_id, total_messages, sent_messages, failed_messages, 
 		       delivered_messages, first_sent_at, last_sent_at
 		FROM message_log_summary 
 		WHERE upload_id = $1`
 
 	err := r.db.QueryRowContext(ctx, query, uploadID).Scan(
-		&summary.UploadID, &summary.TotalMessages, &summary.SentMessages,
+		&summary.UploadID, &summary.EngageMXClientID, &summary.TotalMessages, &summary.SentMessages,
 		&summary.FailedMessages, &summary.DeliveredMessages, &summary.FirstSentAt,
 		&summary.LastSentAt,
 	)
@@ -1280,6 +1288,7 @@ func (r *repository) GetMessageLogSummary(ctx context.Context, uploadID uuid.UUI
 			// Return empty summary if no messages exist yet
 			return &models.MessageLogSummary{
 				UploadID:          uploadID,
+				EngageMXClientID:  "default", // Default client ID when no messages exist
 				TotalMessages:     0,
 				SentMessages:      0,
 				FailedMessages:    0,

@@ -105,13 +105,14 @@ type MessageLogListResponse struct {
 
 // MessageLogSummary represents the message log summary view
 type MessageLogSummary struct {
-	UploadID         uuid.UUID  `json:"upload_id" db:"upload_id"`
-	TotalMessages    int        `json:"total_messages" db:"total_messages"`
-	SentMessages     int        `json:"sent_messages" db:"sent_messages"`
-	FailedMessages   int        `json:"failed_messages" db:"failed_messages"`
-	DeliveredMessages int       `json:"delivered_messages" db:"delivered_messages"`
-	FirstSentAt      *time.Time `json:"first_sent_at" db:"first_sent_at"`
-	LastSentAt       *time.Time `json:"last_sent_at" db:"last_sent_at"`
+	UploadID          uuid.UUID  `json:"upload_id" db:"upload_id"`
+	EngageMXClientID  string     `json:"engagemx_client_id" db:"engagemx_client_id"`
+	TotalMessages     int        `json:"total_messages" db:"total_messages"`
+	SentMessages      int        `json:"sent_messages" db:"sent_messages"`
+	FailedMessages    int        `json:"failed_messages" db:"failed_messages"`
+	DeliveredMessages int        `json:"delivered_messages" db:"delivered_messages"`
+	FirstSentAt       *time.Time `json:"first_sent_at" db:"first_sent_at"`
+	LastSentAt        *time.Time `json:"last_sent_at" db:"last_sent_at"`
 }
 
 // BulkMessageRequest represents a request to send messages to multiple accounts

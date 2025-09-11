@@ -101,6 +101,9 @@ MESSAGING_API_URL=https://api.messaging.example.com
 MESSAGING_API_KEY=your-api-key
 MESSAGING_SIMULATION=true  # Set false for production
 MESSAGING_RATE_LIMIT=5      # Messages per second
+
+# User Provisioning API (for Django Admin integration)
+PROVISIONING_API_KEY=your-secure-provisioning-api-key-here
 ```
 
 ## API Structure
@@ -108,6 +111,10 @@ MESSAGING_RATE_LIMIT=5      # Messages per second
 ### Public Endpoints (No Auth)
 - `GET /health` - Health check
 - `GET /auth/config` - Keycloak configuration for frontend
+
+### API Key Protected Endpoints
+- **Provisioning**: `/api/provisioning/*` - User provisioning from Django Admin
+- **Webhooks**: `/api/webhooks/*` - Real-time sync events from external systems
 
 ### Protected Endpoints (JWT Required)
 - **Uploads**: `/api/uploads/*` - File upload and account management
