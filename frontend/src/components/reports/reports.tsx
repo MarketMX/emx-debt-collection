@@ -32,10 +32,18 @@ interface ReportsProps {
 export function Reports({ onBack }: ReportsProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const { data: messageLogs = [], isLoading } = useQuery({
+  const { data: messageLogsResponse, isLoading, error } = useQuery({
     queryKey: ['message-logs'],
-    queryFn: () => api.messaging.getLogs().then(res => res.data),
+    queryFn: async () => {
+      console.log('Fetching message logs...');
+      const response = await api.messaging.getLogs();
+      console.log('Message logs API response:', response.data);
+      return response.data;
+    },
   });
+
+  const messageLogs = messageLogsResponse?.MessageLogs || [];
+  console.log('Processed message logs:', messageLogs);
 
   const filteredLogs = messageLogs.filter((log: MessageLog) =>
     log.account?.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -50,6 +58,30 @@ export function Reports({ onBack }: ReportsProps) {
   };
 
   const successRate = stats.total > 0 ? (stats.successful / stats.total) * 100 : 0;
+
+  if (error) {
+    console.error('Error loading message logs:', error);
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center h-64 text-red-500">
+            <div className="text-center">
+              <AlertCircle className="h-8 w-8 mx-auto mb-4" />
+              <p className="text-lg font-medium">Error loading reports</p>
+              <p className="text-sm text-gray-500">{error.message}</p>
+              {onBack && (
+                <Button variant="outline" onClick={onBack} className="mt-4">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Dashboard
+                </Button>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

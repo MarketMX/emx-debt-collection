@@ -42,6 +42,8 @@ func (s *Server) RegisterRoutes() http.Handler {
 	adminHandler := handlers.NewAdminHandler(s.db.Repository())
 	reportsHandler := handlers.NewReportsHandler(s.db.Repository())
 	systemHandler := handlers.NewSystemHandler(s.db)
+	provisioningHandler := handlers.NewProvisioningHandler(s.db.Repository())
+	webhookHandler := handlers.NewWebhookHandler(s.db.Repository())
 
 	// Public routes (no authentication required)
 	public := e.Group("")
@@ -51,6 +53,21 @@ func (s *Server) RegisterRoutes() http.Handler {
 	public.GET("/health/live", systemHandler.LivenessCheck)
 	public.GET("/api/info", systemHandler.GetAPIInfo)
 	public.GET("/auth/config", s.authConfigHandler)
+
+	// Provisioning API for Django Admin (API key authentication)
+	provisioning := e.Group("/api/provisioning")
+	provisioning.Use(middleware.RequireAPIKey())
+	provisioning.POST("/users", provisioningHandler.ProvisionUser)                    // POST /api/provisioning/users
+	provisioning.POST("/users/bulk", provisioningHandler.BulkProvisionUsers)          // POST /api/provisioning/users/bulk
+	provisioning.PUT("/users/:keycloak_id/deactivate", provisioningHandler.DeactivateUser) // PUT /api/provisioning/users/{keycloak_id}/deactivate
+	provisioning.GET("/users/:keycloak_id", provisioningHandler.GetUserByKeycloakID)  // GET /api/provisioning/users/{keycloak_id}
+	provisioning.GET("/users", provisioningHandler.ListUsersByClient)                 // GET /api/provisioning/users?client_id=xyz
+
+	// Webhook endpoints for real-time sync (API key authentication)
+	webhooks := e.Group("/api/webhooks")
+	webhooks.Use(middleware.RequireAPIKey())
+	webhooks.POST("/events", webhookHandler.HandleWebhook)        // POST /api/webhooks/events
+	webhooks.GET("/status", webhookHandler.GetWebhookStatus)      // GET /api/webhooks/status
 
 	// Protected routes (authentication required)
 	protected := e.Group("/api")
@@ -118,13 +135,13 @@ func (s *Server) HelloWorldHandler(c echo.Context) error {
 func (s *Server) authConfigHandler(c echo.Context) error {
 	config := map[string]interface{}{
 		"realm":      s.keycloakConfig.Realm,
-		"auth_url":   s.keycloakConfig.ServerURL,  // Frontend expects auth_url
-		"client_id":  s.keycloakConfig.ClientID,   // Frontend expects client_id with underscore
-		"serverUrl":  s.keycloakConfig.ServerURL,  // Keep for backward compatibility
-		"clientId":   s.keycloakConfig.ClientID,   // Keep for backward compatibility
-		"realmUrl":   s.keycloakConfig.RealmURL,
-		"tokenUrl":   s.keycloakConfig.TokenEndpoint(),
-		"userInfoUrl": s.keycloakConfig.UserInfoEndpoint(),
+		"auth_url":   s.keycloakConfig.FrontendURL,      // Frontend expects auth_url for browser access
+		"client_id":  s.keycloakConfig.ClientID,         // Frontend expects client_id with underscore
+		"serverUrl":  s.keycloakConfig.FrontendURL,      // Frontend server URL for browser access
+		"clientId":   s.keycloakConfig.ClientID,         // Keep for backward compatibility
+		"realmUrl":   s.keycloakConfig.FrontendRealmURL, // Frontend realm URL for browser access
+		"tokenUrl":   s.keycloakConfig.FrontendTokenEndpoint(),
+		"userInfoUrl": s.keycloakConfig.FrontendUserInfoEndpoint(),
 	}
 
 	return c.JSON(http.StatusOK, config)

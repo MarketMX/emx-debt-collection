@@ -22,7 +22,6 @@ import (
 
 const (
 	MaxFileSize    = 50 << 20 // 50MB
-	UploadDir      = "uploads"
 	DefaultPerPage = 20
 	MaxPerPage     = 100
 )
@@ -37,11 +36,6 @@ type UploadHandler struct {
 
 // NewUploadHandler creates a new upload handler
 func NewUploadHandler(repo database.Repository, excelService *services.ExcelService, accountService *services.AccountService, progressService *services.ProgressService) *UploadHandler {
-	// Ensure upload directory exists
-	if err := os.MkdirAll(UploadDir, 0755); err != nil {
-		panic(fmt.Sprintf("Failed to create upload directory: %v", err))
-	}
-
 	return &UploadHandler{
 		repo:           repo,
 		excelService:   excelService,
@@ -128,28 +122,13 @@ func (h *UploadHandler) UploadFile(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to create upload record: "+err.Error())
 	}
 
-	// Save file to disk
-	filePath := filepath.Join(UploadDir, upload.Filename)
-	destFile, err := os.Create(filePath)
-	if err != nil {
-		// Clean up upload record on file creation failure
-		h.updateUploadStatus(c.Request().Context(), upload.ID, models.UploadStatusFailed, fmt.Sprintf("Failed to save file: %s", err.Error()))
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to save uploaded file")
-	}
-	defer destFile.Close()
-
-	// Copy file data
-	if _, err := io.Copy(destFile, file); err != nil {
-		os.Remove(filePath) // Clean up file
-		h.updateUploadStatus(c.Request().Context(), upload.ID, models.UploadStatusFailed, fmt.Sprintf("Failed to save file: %s", err.Error()))
-		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to save uploaded file")
+	// Reset file pointer for processing
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, "Failed to process file")
 	}
 
-	// Update upload record with file path
-	upload.FilePath = &filePath
-
-	// Start async processing
-	go h.processUploadAsync(upload, filePath)
+	// Start async processing directly from memory
+	go h.processUploadAsyncFromReader(upload, file)
 
 	// Return upload info immediately
 	return c.JSON(http.StatusCreated, map[string]interface{}{
@@ -158,7 +137,51 @@ func (h *UploadHandler) UploadFile(c echo.Context) error {
 	})
 }
 
-// processUploadAsync processes the uploaded file asynchronously
+// processUploadAsyncFromReader processes the uploaded file from a reader (no file persistence)
+func (h *UploadHandler) processUploadAsyncFromReader(upload *models.Upload, reader io.Reader) {
+	ctx := context.Background()
+
+	// Update status to processing
+	h.updateUploadStatusWithTime(ctx, upload.ID, models.UploadStatusProcessing, "", time.Now())
+
+	// Parse Excel file directly from reader
+	result, err := h.excelService.ParseExcelFile(ctx, reader, upload.ID, nil)
+	if err != nil {
+		h.updateUploadStatus(ctx, upload.ID, models.UploadStatusFailed, fmt.Sprintf("Failed to parse Excel file: %s", err.Error()))
+		return
+	}
+
+	// Save accounts to database
+	if len(result.Accounts) > 0 {
+		err = h.repo.CreateAccountsBatch(ctx, result.Accounts)
+		if err != nil {
+			h.updateUploadStatus(ctx, upload.ID, models.UploadStatusFailed, fmt.Sprintf("Failed to save accounts: %s", err.Error()))
+			return
+		}
+	}
+
+	// Update upload status to completed
+	now := time.Now()
+	updateReq := models.UpdateUploadRequest{
+		Status:                 utils.StringPtr(string(models.UploadStatusCompleted)),
+		ProcessingCompletedAt:  &now,
+		RecordsProcessed:       &result.ProcessedRows,
+		RecordsFailed:          &result.FailedRows,
+	}
+
+	if len(result.Errors) > 0 {
+		errorMsg := strings.Join(result.Errors, "; ")
+		updateReq.ErrorMessage = &errorMsg
+	}
+
+	_, err = h.repo.UpdateUpload(ctx, upload.ID, updateReq)
+	if err != nil {
+		// Log error but don't fail the processing
+		fmt.Printf("Failed to update upload status: %v\n", err)
+	}
+}
+
+// processUploadAsync processes the uploaded file asynchronously (kept for compatibility)
 func (h *UploadHandler) processUploadAsync(upload *models.Upload, filePath string) {
 	ctx := context.Background()
 

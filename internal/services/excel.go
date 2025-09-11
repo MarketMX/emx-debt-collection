@@ -58,16 +58,16 @@ type ExcelColumnMapping struct {
 // getDefaultColumnMapping returns the default column mappings with common variations
 func getDefaultColumnMapping() ExcelColumnMapping {
 	return ExcelColumnMapping{
-		Account: []string{"Account", "Account Code", "Account Number", "Acc Code", "AccCode", "Account #"},
-		Name: []string{"Name", "Customer Name", "Customer", "Client Name", "Client", "Company", "Company Name"},
-		Contact: []string{"Contact", "Contact Person", "Contact Name", "Rep", "Representative", "Account Manager"},
-		Telephone: []string{"Telephone", "Phone", "Phone Number", "Mobile", "Cell", "Contact Number", "Tel"},
+		Account: []string{"Acc. no.", "Account Number", "Account", "Account Code", "Acc Code", "AccCode", "Account #"},
+		Name: []string{"Account holder", "Company Name", "Name", "Customer Name", "Customer", "Client Name", "Client", "Company"},
+		Contact: []string{"Contact Person", "Contact", "Contact Name", "Rep", "Representative", "Account Manager"},
+		Telephone: []string{"Contact number", "Telephone Number", "Telephone", "Phone", "Phone Number", "Mobile", "Cell", "Contact Number", "Tel"},
 		Current: []string{"Current", "Current Balance", "0-30", "0 Days", "Current Amount"},
-		Days30: []string{"30 Days", "30-60", "30d", "31-60 Days", "30-59 Days", "30-60 Days"},
-		Days60: []string{"60 Days", "60-90", "60d", "61-90 Days", "60-89 Days", "60-90 Days"},
-		Days90: []string{"90 Days", "90-120", "90d", "91-120 Days", "90-119 Days", "90-120 Days"},
-		Days120: []string{"120 Days", "120+", "120d", "120+ Days", "Over 120", "120 Plus", "120 Days+"},
-		TotalBalance: []string{"Total Balance", "Total", "Balance", "Amount", "Outstanding", "Amount Outstanding", "Total Outstanding"},
+		Days30: []string{"30 days", "30 Days", "30-60", "30d", "31-60 Days", "30-59 Days", "30-60 Days"},
+		Days60: []string{"60 days", "60 Days", "60-90", "60d", "61-90 Days", "60-89 Days", "60-90 Days"},
+		Days90: []string{"90 days", "90 Days", "90-120", "90d", "91-120 Days", "90-119 Days", "90-120 Days"},
+		Days120: []string{"120 days", "150+ days", "Over 120 Days", "120 Days", "120+", "120d", "120+ Days", "Over 120", "120 Plus", "120 Days+"},
+		TotalBalance: []string{"Total", "Over All Balance", "Total Balance", "Balance", "Amount", "Outstanding", "Amount Outstanding", "Total Outstanding"},
 	}
 }
 
@@ -100,6 +100,9 @@ func (s *ExcelService) ValidateExcelFile(reader io.Reader) error {
 	mapping := getDefaultColumnMapping()
 	headerRow := rows[0]
 	
+	// Log the actual headers found for debugging
+	fmt.Printf("[Excel] Found headers in file: %v\n", headerRow)
+	
 	requiredMappings := map[string][]string{
 		"Account":      mapping.Account,
 		"Name":         mapping.Name,
@@ -110,9 +113,11 @@ func (s *ExcelService) ValidateExcelFile(reader io.Reader) error {
 	for fieldName, variations := range requiredMappings {
 		found := false
 		for _, header := range headerRow {
+			cleanHeader := strings.TrimSpace(header)
 			for _, variation := range variations {
-				if strings.EqualFold(strings.TrimSpace(header), variation) {
+				if strings.EqualFold(cleanHeader, variation) {
 					found = true
+					fmt.Printf("[Excel] Matched '%s' -> '%s' (field: %s)\n", cleanHeader, variation, fieldName)
 					break
 				}
 			}
@@ -121,7 +126,7 @@ func (s *ExcelService) ValidateExcelFile(reader io.Reader) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("required column '%s' not found in Excel file. Expected one of: %v", fieldName, variations)
+			return fmt.Errorf("required column '%s' not found in Excel file. Headers found: %v. Expected one of: %v", fieldName, headerRow, variations)
 		}
 	}
 
@@ -163,10 +168,12 @@ func (s *ExcelService) ParseExcelFile(ctx context.Context, reader io.Reader, upl
 
 	// Parse header row to map columns
 	headerRow := rows[0]
+	fmt.Printf("[Excel Parse] Found headers in file: %v\n", headerRow)
 	columnIndexes, err := s.mapColumns(headerRow)
 	if err != nil {
 		return nil, fmt.Errorf("failed to map columns: %w", err)
 	}
+	fmt.Printf("[Excel Parse] Column mappings: %v\n", columnIndexes)
 
 	// Send initial progress
 	if progressCallback != nil {

@@ -5,11 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Keycloak from 'keycloak-js';
 import { Dashboard } from '@/components/dashboard/dashboard';
 import { Login } from '@/components/auth/login';
+import { SSOHandler } from '@/components/auth/sso';
 import { MessageTemplates } from '@/components/messaging/message-templates';
 import { UserManagement } from '@/components/admin/user-management';
 import { MessagingProgress } from '@/components/messaging/messaging-progress';
 import { Toaster } from '@/components/ui/toaster';
-import { api } from '@/lib/api';
+import { api, setupInterceptors } from '@/lib/api';
 import type { AuthConfig } from '@/types';
 import { Loader2 } from 'lucide-react';
 
@@ -22,6 +23,18 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+const KeycloakInterceptor = ({ children }: { children: React.ReactNode }) => {
+  const { keycloak, initialized } = useKeycloak();
+
+  useEffect(() => {
+    if (initialized) {
+      setupInterceptors(keycloak);
+    }
+  }, [initialized, keycloak]);
+
+  return <>{children}</>;
+};
 
 function App() {
   const [keycloak, setKeycloak] = useState<Keycloak | null>(null);
@@ -103,7 +116,9 @@ function App() {
     >
       <QueryClientProvider client={queryClient}>
         <Router>
-          <AppRoutes />
+          <KeycloakInterceptor>
+            <AppRoutes />
+          </KeycloakInterceptor>
         </Router>
         <Toaster />
       </QueryClientProvider>
@@ -114,6 +129,7 @@ function App() {
 function AppRoutes() {
   return (
     <Routes>
+      <Route path="/auth/sso" element={<SSOHandler />} />
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/templates" element={<ProtectedRoute><MessageTemplates /></ProtectedRoute>} />
@@ -125,9 +141,43 @@ function AppRoutes() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { keycloak } = useKeycloak();
+  const { keycloak, initialized } = useKeycloak();
+  const [isChecking, setIsChecking] = useState(true);
+
+  useEffect(() => {
+    if (initialized && keycloak) {
+      // Check if token is expired and try to refresh
+      if (keycloak.isTokenExpired?.()) {
+        keycloak.updateToken(30)
+          .then((refreshed) => {
+            if (refreshed) {
+              console.log('Token refreshed');
+            }
+            setIsChecking(false);
+          })
+          .catch(() => {
+            console.log('Failed to refresh token');
+            keycloak.logout();
+          });
+      } else {
+        setIsChecking(false);
+      }
+    }
+  }, [initialized, keycloak]);
+
+  if (!initialized || isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!keycloak?.authenticated) {
+    console.log('User not authenticated, redirecting to login');
     return <Navigate to="/login" replace />;
   }
 
